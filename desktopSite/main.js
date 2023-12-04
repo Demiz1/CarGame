@@ -5,17 +5,15 @@ import { GUI } from './lil-gui.js';
 
 const scene = new THREE.Scene();
 const camera = new THREE.PerspectiveCamera( 75, window.innerWidth / window.innerHeight, 0.1, 1000 );
-camera.position.set(0, 10, 20);
+camera.position.set(2, 0.5, 2);
 
 const renderer = new THREE.WebGLRenderer();
 renderer.setSize( window.innerWidth, window.innerHeight );
 document.body.appendChild( renderer.domElement );
 
 const controls = new OrbitControls( camera, renderer.domElement );
-controls.target.set(0, 5, 0);
+controls.target.set(0, 0, 0);
 controls.update();
-
-const GLTFloader = new GLTFLoader();
     
 {
     const planeSize = 40;
@@ -36,6 +34,7 @@ const GLTFloader = new GLTFLoader();
     } );
     const mesh = new THREE.Mesh( planeGeo, planeMat );
     mesh.rotation.x = Math.PI * - .5;
+    mesh.position.set(0,-1,0)
     scene.add( mesh );
 }
 
@@ -81,9 +80,37 @@ gui.addColor(new ColorGUIHelper(light, 'color'), 'value').name('color');
 gui.add(light, 'intensity', 0, 2, 0.01);
 
 
-GLTFloader.load( 'Avocado.glb', function (gltf){
-	gltf.scene.scale.set(100,100,100);
+let modelReady = false;
+let modelWheelHelper
+const GLTFloader = new GLTFLoader();
+GLTFloader.load( 'car_a3.glb', function (gltf){
+    /*
+    mixer = new THREE.AnimationMixer(gltf.scene);
+    const action = mixer.clipAction(THREE.AnimationClip.findByName(gltf.animations,'Turn'));
+    action.play();
+    */
     scene.add(gltf.scene);
+    
+    var flwa = scene.getObjectByName( "FrontLeftAxel", true );
+    var frwa = scene.getObjectByName( "FrontRightAxel", true );
+
+    var flw = scene.getObjectByName( "FrontLeftWheel", true );
+    var frw = scene.getObjectByName( "FrontRightWheel", true );
+    var bw = scene.getObjectByName( "BackWheels", true );
+    let car = scene.getObjectByName("Car_MainBody",true);
+    modelWheelHelper = {
+        setTurnAngle: function(angle){
+            flwa.rotation.y = angle
+            frwa.rotation.y = angle
+        },
+        setRotationAngle: function(angle){
+            flw.rotation.y = -angle
+            frw.rotation.y = -angle
+            bw.rotation.x = angle
+        },
+        car: car
+    }
+    modelReady = true;
 }, undefined, function(error){
 	console.error(error);
 });
@@ -101,12 +128,23 @@ function resizeRendererToDisplaySize( renderer ) {
     return needResize;
 }
 
-function render() {
+function render(timestamp) {
     if ( resizeRendererToDisplaySize( renderer ) ) {
         const canvas = renderer.domElement;
         camera.aspect = canvas.clientWidth / canvas.clientHeight;
         camera.updateProjectionMatrix();
     }
+
+    if(modelReady) { 
+        //mixer.update(0.1);
+        let ang = Math.sin(timestamp/1000) * Math.PI/10;
+        console.log(ang)
+        modelWheelHelper.setTurnAngle(ang)
+        modelWheelHelper.setRotationAngle(timestamp/100)
+
+        modelWheelHelper.car.position.z = Math.sin(timestamp/1000)
+    }
+    
     renderer.render( scene, camera );
     requestAnimationFrame( render );
 }
