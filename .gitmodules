@@ -1,0 +1,6 @@
+[submodule "desktopSite/Cannon"]
+	path = desktopSite/Cannon
+	url = https://github.com/pmndrs/cannon-es.git
+[submodule "desktopSite/Three"]
+	path = desktopSite/Three
+	url = https://github.com/mrdoob/three.js.git
