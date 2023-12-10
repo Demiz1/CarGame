@@ -1,7 +1,8 @@
-import * as THREE from 'three';
-import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
-import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
-import { GUI } from './lil-gui.js';
+import * as THREE from './Three/build/three.module.js';
+import { OrbitControls } from './Three/examples/jsm/controls/OrbitControls.js'
+import { GLTFLoader } from './Three/examples/jsm/loaders/GLTFLoader.js'
+import { GUI } from './lil-gui.js'
+import * as CANNON from './Cannon/dist/cannon-es.js'
 
 const scene = new THREE.Scene();
 const camera = new THREE.PerspectiveCamera( 75, window.innerWidth / window.innerHeight, 0.1, 1000 );
@@ -14,7 +15,11 @@ document.body.appendChild( renderer.domElement );
 const controls = new OrbitControls( camera, renderer.domElement );
 controls.target.set(0, 0, 0);
 controls.update();
-    
+
+const world = new CANNON.World({
+    gravity: new CANNON.Vec3(0, -9.82, 0), // m/s²
+})
+
 {
     const planeSize = 40;
 
@@ -36,6 +41,13 @@ controls.update();
     mesh.rotation.x = Math.PI * - .5;
     mesh.position.set(0,-1,0)
     scene.add( mesh );
+    
+    const groundBody = new CANNON.Body({
+        type: CANNON.Body.STATIC,
+        shape: new CANNON.Plane(),
+      })
+      groundBody.quaternion.setFromEuler(-Math.PI / 2, 0, 0) // make it face up
+      world.addBody(groundBody)  
 }
 
 {
@@ -46,49 +58,56 @@ controls.update();
     mesh.position.set(cubeSize + 1, cubeSize / 2, 0);
     scene.add(mesh);
 }
+
+let cannon_sphereBody = null
+let three_mesh = null
 {
     const sphereRadius = 3;
     const sphereWidthDivisions = 32;
     const sphereHeightDivisions = 16;
     const sphereGeo = new THREE.SphereGeometry(sphereRadius, sphereWidthDivisions, sphereHeightDivisions);
     const sphereMat = new THREE.MeshPhongMaterial({color: '#CA8'});
-    const mesh = new THREE.Mesh(sphereGeo, sphereMat);
-    mesh.position.set(-sphereRadius - 1, sphereRadius + 2, 0);
-    scene.add(mesh);
+    three_mesh = new THREE.Mesh(sphereGeo, sphereMat);
+    three_mesh.position.set(-sphereRadius - 1, sphereRadius + 2, 0);
+    scene.add(three_mesh);
+    // Create a sphere body
+    const radius = 3 // m
+    cannon_sphereBody = new CANNON.Body({
+    mass: 5, // kg
+    shape: new CANNON.Sphere(radius),
+    })
+    cannon_sphereBody.position.set(...three_mesh.position) // m
+    world.addBody(cannon_sphereBody)
 }
 
-class ColorGUIHelper {
-constructor(object, prop) {
-    this.object = object;
-    this.prop = prop;
-}
-get value() {
-    return `#${this.object[this.prop].getHexString()}`;
-}
-set value(hexString) {
-    this.object[this.prop].set(hexString);
-}
+{
+    class ColorGUIHelper {
+        constructor(object, prop) {
+            this.object = object;
+            this.prop = prop;
+        }
+        get value() {
+            return `#${this.object[this.prop].getHexString()}`;
+        }
+        set value(hexString) {
+            this.object[this.prop].set(hexString);
+        }
+    }
+
+    const color = 0xFFFFFF;
+    const intensity = 1;
+    const light = new THREE.AmbientLight(color, intensity);
+    scene.add(light);
+
+    const gui = new GUI();
+    gui.addColor(new ColorGUIHelper(light, 'color'), 'value').name('color');
+    gui.add(light, 'intensity', 0, 2, 0.01);
 }
 
-const color = 0xFFFFFF;
-const intensity = 1;
-const light = new THREE.AmbientLight(color, intensity);
-scene.add(light);
-
-const gui = new GUI();
-gui.addColor(new ColorGUIHelper(light, 'color'), 'value').name('color');
-gui.add(light, 'intensity', 0, 2, 0.01);
-
-
-let modelReady = false;
-let modelWheelHelper
+  
+let modelWheelHelper = null
 const GLTFloader = new GLTFLoader();
 GLTFloader.load( 'car_a3.glb', function (gltf){
-    /*
-    mixer = new THREE.AnimationMixer(gltf.scene);
-    const action = mixer.clipAction(THREE.AnimationClip.findByName(gltf.animations,'Turn'));
-    action.play();
-    */
     scene.add(gltf.scene);
     
     var flwa = scene.getObjectByName( "FrontLeftAxel", true );
@@ -110,13 +129,12 @@ GLTFloader.load( 'car_a3.glb', function (gltf){
         },
         car: car
     }
-    modelReady = true;
 }, undefined, function(error){
 	console.error(error);
 });
 
 
-
+//todo fix proper resizing when development tab is open.
 function resizeRendererToDisplaySize( renderer ) {
     const canvas = renderer.domElement;
     const width = canvas.clientWidth;
@@ -135,13 +153,16 @@ function render(timestamp) {
         camera.updateProjectionMatrix();
     }
 
-    if(modelReady) { 
-        //mixer.update(0.1);
+    world.fixedStep()
+
+    three_mesh.position.copy(cannon_sphereBody.position)
+    three_mesh.quaternion.copy(cannon_sphereBody.quaternion)
+
+    //update the car model
+    if(modelWheelHelper != null) { 
         let ang = Math.sin(timestamp/1000) * Math.PI/10;
-        console.log(ang)
         modelWheelHelper.setTurnAngle(ang)
         modelWheelHelper.setRotationAngle(timestamp/100)
-
         modelWheelHelper.car.position.z = Math.sin(timestamp/1000)
     }
     
